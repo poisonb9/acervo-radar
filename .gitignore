@@ -1,0 +1,61 @@
+# ============================================================================
+# ⛔ FRONTEIRA DO REPOSITORIO -- cada linha tem motivo escrito.
+#    Este arquivo e' a unica coisa que impede o acervo inteiro de vazar por
+#    um `git add .` distraido. Ler antes de mexer.
+# ============================================================================
+
+# --- CHAVES -------------------------------------------------------------
+# 25 chaves FTA, 9 Gemini, NVIDIA, OpenRouter. Repo privado NAO e'
+# criptografia: quem tem acesso ao repo tem as chaves.
+*chaves*
+*.key
+.env
+token_*.json
+client_secrets*.json
+
+# --- O DICIONARIO -------------------------------------------------------
+# ⛔ A PECA MAIS SENSIVEL. E' o unico arquivo que liga C001..C015 ao canal
+#    real. Sem ele, o que esta' versionado e' uma lista de codigos.
+dicionario_canais.json
+
+# --- MANIFESTOS DE ID ---------------------------------------------------
+# ⛔ UM UNICO ID DE VIDEO REVELA O CANAL: basta colar no navegador.
+#    Versionar os IDs anularia a codificacao. Eles ficam locais e no Drive;
+#    o workflow os busca no inicio e devolve no fim.
+manifestos/
+*_ids.json
+
+# --- LIVROS -------------------------------------------------------------
+# ⛔ Decisao do dono, 21/09/2026: "nao leve os livros". Nem os PDFs nem o
+#    texto extraido -- sao obras de terceiros, e sao dezenas de MB.
+livros-biblioteca/
+biblioteca-texto/
+*.pdf
+*.djvu
+*.epub
+*.mobi
+full_text*.txt
+
+# --- LEGENDAS EM BRUTO --------------------------------------------------
+# Conteudo de terceiros e volumoso (8.853 arquivos). O que o repo guarda e'
+# a FICHA destilada, nao a transcricao.
+legendas/
+*.vtt
+*.srt
+corpus/
+
+# --- VIDEO --------------------------------------------------------------
+# ⛔ Regra permanente do dono: nunca mp4. 1,6 GB ja' derrubaram uma suite.
+*.mp4
+*.webm
+*.mkv
+*.m4a
+
+# --- RUIDO --------------------------------------------------------------
+__pycache__/
+*.pyc
+.venv/
+*.log
+*.err
+*.posse
+*.parcial.json

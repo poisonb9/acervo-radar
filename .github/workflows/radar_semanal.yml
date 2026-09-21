@@ -1,0 +1,123 @@
+name: Radar semanal do acervo
+
+# ⛔ COMMIT SO' NO FIM, NUM PASSO UNICO.
+#    Empurrar durante a corrida do radar faz o runner perder tudo -- ja'
+#    custou 95 videos e 2h26. Por isso nao ha' `git push` no meio deste
+#    arquivo, e os estagios passam resultado por artefato, nao por commit.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"        # segunda-feira, 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      so_codigo:
+        description: "rodar um canal so' (ex.: C001). Vazio = todos."
+        required: false
+        default: ""
+      seco:
+        description: "true = so' o radar, nao gasta credito nem token"
+        required: false
+        default: "false"
+
+concurrency:
+  # ⛔ duas corridas ao mesmo tempo escreveriam o mesmo manifesto e uma
+  #    apagaria os IDs da outra.
+  group: radar-acervo
+  cancel-in-progress: false
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar yt-dlp
+        run: pip install --quiet --upgrade yt-dlp
+
+      - name: Trazer dicionario e manifestos (fora do repo, por desenho)
+        env:
+          DICIONARIO_B64: ${{ secrets.DICIONARIO_CANAIS_B64 }}
+          MANIFESTOS_B64: ${{ secrets.MANIFESTOS_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DICIONARIO_B64:-}" ]; then
+            echo "⛔ DICIONARIO_CANAIS_B64 ausente. Sem ele o radar nao sabe"
+            echo "   o que enumerar, e isso e' proposital. Abortando."
+            exit 1
+          fi
+          echo "$DICIONARIO_B64" | base64 -d > dicionario_canais.json
+          mkdir -p manifestos
+          if [ -n "${MANIFESTOS_B64:-}" ]; then
+            echo "$MANIFESTOS_B64" | base64 -d | tar xz -C .
+          else
+            echo "⚠️ sem manifesto anterior: TODO video sera' tratado como novo."
+          fi
+
+      - name: Estagio 1 - radar
+        run: |
+          python scripts/radar.py \
+            --dicionario dicionario_canais.json \
+            --manifestos manifestos \
+            --canais canais \
+            --saida novos.json \
+            --so-codigo "${{ github.event.inputs.so_codigo }}"
+
+      - name: Estagio 2 - coletar legendas dos novos
+        if: ${{ github.event.inputs.seco != 'true' }}
+        env:
+          FTA_CHAVES: ${{ secrets.FTA_CHAVES }}
+        run: |
+          set -euo pipefail
+          test -s novos.json
+          python scripts/coletar.py --novos novos.json --saida legendas
+        # ⛔ nunca baixa video. A FTA so' tem a rota /v1/transcript.
+
+      - name: Estagio 3 - destilar
+        if: ${{ github.event.inputs.seco != 'true' }}
+        env:
+          GEMINI_CHAVES: ${{ secrets.GEMINI_CHAVES }}
+          NVIDIA_CHAVES: ${{ secrets.NVIDIA_CHAVES }}
+          OPENROUTER_CHAVES: ${{ secrets.OPENROUTER_CHAVES }}
+        run: |
+          # ⭐ a cota do Gemini e' POR MODELO. Cair de modelo em modelo e' o
+          #    que mantem isto vivo quando uma cota acaba.
+          python scripts/destilar.py --entrada legendas --saida fichas \
+            --modelos "nemotron,gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash"
+
+      - name: Estagio 4 - regenerar skills
+        if: ${{ github.event.inputs.seco != 'true' }}
+        run: python scripts/gerar_skills.py --fichas fichas --saida skills
+
+      - name: Guardar saida como artefato (resgate manual se o commit falhar)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acervo-${{ github.run_number }}
+          path: |
+            novos.json
+            manifestos/
+            fichas/
+            skills/
+          retention-days: 30
+
+      - name: Commit unico, no fim
+        if: ${{ github.event.inputs.seco != 'true' }}
+        run: |
+          set -euo pipefail
+          # ⛔ o dicionario e os manifestos NAO entram. Ver .gitignore --
+          #    um unico ID de video revela o canal.
+          rm -f dicionario_canais.json
+          git config user.name  "radar-do-acervo"
+          git config user.email "radar@localhost"
+          git add canais skills fichas
+          if git diff --cached --quiet; then
+            echo "nada mudou nesta semana."
+          else
+            git commit -m "radar semanal: $(python -c "import json;print(json.load(open('novos.json'))['total'])") videos novos"
+            git push
+          fi
