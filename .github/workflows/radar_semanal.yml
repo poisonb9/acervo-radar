@@ -42,14 +42,23 @@ jobs:
       - name: Trazer dicionario e manifestos (fora do repo, por desenho)
         env:
           DICIONARIO_B64: ${{ secrets.DICIONARIO_CANAIS_B64 }}
-          # ⛔ Um secret do GitHub para em 48 KB e os manifestos dao 118 KB em
-          #    base64 -- IDs de video sao aleatorios e nao comprimem. Por isso
-          #    vao em TRES partes, concatenadas aqui na ordem 1,2,3.
-          #    Quem regravar uma parte TEM de regravar as tres: metade de um
+          # ⛔ Um secret do GitHub para em 48 KB e os manifestos nao cabem:
+          #    IDs de video sao aleatorios e nao comprimem. Vao em PARTES,
+          #    concatenadas aqui em ordem.
+          # ⚠️ Eram 3 partes (118 KB) as 14h de 21/09/2026 e viraram 5
+          #    (174 KB) as 17h, quando os 10 mentores entraram. Por isso o
+          #    passo le' ATE' 8 e ignora as vazias, em vez de fixar o numero:
+          #    o acervo cresce, e um numero fixo quebra calado.
+          # ⛔ Quem regravar UMA parte tem de regravar TODAS: metade de um
           #    tar.gz nao e' um tar.gz, e o `base64 -d` falha inteiro.
           MANIFESTOS_B64_1: ${{ secrets.MANIFESTOS_B64_1 }}
           MANIFESTOS_B64_2: ${{ secrets.MANIFESTOS_B64_2 }}
           MANIFESTOS_B64_3: ${{ secrets.MANIFESTOS_B64_3 }}
+          MANIFESTOS_B64_4: ${{ secrets.MANIFESTOS_B64_4 }}
+          MANIFESTOS_B64_5: ${{ secrets.MANIFESTOS_B64_5 }}
+          MANIFESTOS_B64_6: ${{ secrets.MANIFESTOS_B64_6 }}
+          MANIFESTOS_B64_7: ${{ secrets.MANIFESTOS_B64_7 }}
+          MANIFESTOS_B64_8: ${{ secrets.MANIFESTOS_B64_8 }}
         run: |
           set -euo pipefail
           if [ -z "${DICIONARIO_B64:-}" ]; then
@@ -59,10 +68,14 @@ jobs:
           fi
           echo "$DICIONARIO_B64" | base64 -d > dicionario_canais.json
           mkdir -p manifestos
-          # printf sem %s extra e de proposito: um unico \n no meio do base64
-          # quebraria a decodificacao. Nada de `echo` aqui.
-          printf '%s%s%s' "${MANIFESTOS_B64_1:-}" "${MANIFESTOS_B64_2:-}" \
-                          "${MANIFESTOS_B64_3:-}" > manifestos.b64
+          # printf '%s' e nao `echo`: um unico \n no meio do base64 quebraria
+          # a decodificacao inteira. A parte que nao existe vira string vazia
+          # e nao atrapalha a concatenacao.
+          : > manifestos.b64
+          for i in 1 2 3 4 5 6 7 8; do
+            eval "parte=\${MANIFESTOS_B64_$i:-}"
+            printf '%s' "$parte" >> manifestos.b64
+          done
           if [ -s manifestos.b64 ]; then
             base64 -d manifestos.b64 | tar xz -C .
             echo "manifestos restaurados: $(ls manifestos | wc -l) canais"
@@ -106,7 +119,18 @@ jobs:
 
       - name: Estagio 4 - regenerar skills
         if: ${{ github.event.inputs.seco != 'true' }}
-        run: python scripts/gerar_skills.py --fichas fichas --saida skills
+        # ⛔ UMA SKILL POR GRUPO. Desde 21/09/2026 o radar cobre dois acervos
+        #    que nao se misturam: 15 canais de front-end e 10 mentores de
+        #    daytrade. Sem --grupo, ficha de mentor entraria na skill de CSS.
+        #    `|| true`: um grupo sem ficha nova nao e' erro, e nao pode
+        #    derrubar a corrida do outro.
+        run: |
+          set -uo pipefail
+          python scripts/gerar_skills.py --fichas fichas --saida skills \
+            --canais canais --grupo css_frontend --nome css-frontend || true
+          python scripts/gerar_skills.py --fichas fichas --saida skills \
+            --canais canais --grupo mentores_fx --nome mentores-fx || true
+          ls -la skills || true
 
       - name: Guardar saida como artefato (resgate manual se o commit falhar)
         if: always()

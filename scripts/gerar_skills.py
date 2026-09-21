@@ -25,8 +25,28 @@ from collections import Counter
 from datetime import datetime, timezone
 
 
-def carregar(raiz: pathlib.Path) -> tuple[list[dict], Counter, int]:
+def grupos_dos_canais(pasta: pathlib.Path) -> dict:
+    """codigo -> grupo, lido de `canais/C0xx.json`.
+
+    ⛔ Sem isto, ficha de mentor de daytrade entraria na skill de front-end.
+    Desde 21/09/2026 o radar cobre DOIS acervos que nao se misturam:
+    `css_frontend` (15 canais) e `mentores_fx` (10 mentores de daytrade).
+    """
+    out = {}
+    if pasta.is_dir():
+        for p in sorted(pasta.glob("C*.json")):
+            try:
+                d = json.loads(p.read_text(encoding="utf-8", errors="replace"))
+            except Exception:
+                continue
+            out[d.get("codigo", p.stem)] = d.get("grupo", "css_frontend")
+    return out
+
+
+def carregar(raiz: pathlib.Path, grupo: str = "",
+             mapa: dict | None = None) -> tuple[list[dict], Counter, int]:
     fichas, por_cod, videos = [], Counter(), 0
+    mapa = mapa or {}
     for p in sorted(raiz.rglob("*.json")):
         try:
             d = json.loads(p.read_text(encoding="utf-8", errors="replace"))
@@ -35,8 +55,12 @@ def carregar(raiz: pathlib.Path) -> tuple[list[dict], Counter, int]:
         fs = d.get("fichas") or []
         if not fs:
             continue
-        videos += 1
         cod = d.get("codigo", p.parent.name)
+        # ⭐ codigo sem grupo conhecido cai em css_frontend, que era o unico
+        #    acervo antes de 21/09 -- assim nada antigo muda de lugar.
+        if grupo and mapa.get(cod, "css_frontend") != grupo:
+            continue
+        videos += 1
         por_cod[cod] += len(fs)
         for f in fs:
             f["_codigo"] = cod
@@ -54,13 +78,19 @@ def main() -> int:
     ap.add_argument("--fichas", default="fichas")
     ap.add_argument("--saida", default="skills")
     ap.add_argument("--nome", default="css-frontend")
+    ap.add_argument("--grupo", default="",
+                    help="so' as fichas deste grupo (css_frontend | mentores_fx). "
+                         "Vazio = todas, que so' faz sentido se houver um acervo so'.")
+    ap.add_argument("--canais", default="canais",
+                    help="pasta dos C0xx.json, de onde sai o grupo de cada codigo")
     a = ap.parse_args()
 
     raiz = pathlib.Path(a.fichas)
     if not raiz.is_dir():
         print("⛔ pasta de fichas ausente:", raiz)
         return 2
-    fichas, por_cod, videos = carregar(raiz)
+    mapa = grupos_dos_canais(pathlib.Path(a.canais))
+    fichas, por_cod, videos = carregar(raiz, a.grupo, mapa)
     if not fichas:
         print("⛔ ZERO fichas. A skill NAO sera' regenerada -- sobrescrever "
               "uma skill boa com uma vazia e' pior que nao atualizar.")
