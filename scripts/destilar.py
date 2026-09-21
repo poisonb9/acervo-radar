@@ -146,8 +146,28 @@ def chamar(cadeia: list[tuple], texto: str) -> tuple[list[dict], str]:
 
 
 def lotes(t: str) -> list[str]:
+    """Fatia em pedacos de CHARS_POR_LOTE. Funciona SEM quebras de linha.
+
+    ⛔ A versao anterior fatiava so' por linha. Legenda da FTA nao tem
+    quebra nenhuma -- e' uma linha unica -- entao `splitlines()` devolvia 1
+    elemento e o limite NUNCA era aplicado: um video de 239.738 chars foi
+    enviado como UM lote so'. O modelo devolveu as primeiras fichas e o
+    resto se perdeu em silencio, sem erro e sem log. Medido em 21/09/2026:
+    um video 24x maior que outro rendeu o MESMO numero de fichas, que foi
+    o sintoma que denunciou o problema.
+
+    Por isso a linha comprida demais e' quebrada por tamanho. Vale para
+    qualquer fonte futura que venha sem quebras.
+    """
     out, atual, n = [], [], 0
     for linha in t.splitlines(keepends=True):
+        # linha que sozinha estoura o lote: parte em pedacos
+        while len(linha) > CHARS_POR_LOTE:
+            if atual:
+                out.append("".join(atual)); atual, n = [], 0
+            corte = linha.rfind(" ", 0, CHARS_POR_LOTE) + 1 or CHARS_POR_LOTE
+            out.append(linha[:corte])
+            linha = linha[corte:]
         if n + len(linha) > CHARS_POR_LOTE and atual:
             out.append("".join(atual)); atual, n = [], 0
         atual.append(linha); n += len(linha)
@@ -157,9 +177,36 @@ def lotes(t: str) -> list[str]:
 
 
 def texto_da_legenda(p: pathlib.Path) -> str:
+    """So' a FALA. Nunca o JSON cru.
+
+    ⭐ A FTA devolve `transcript` como LISTA de trechos
+    (`{"text": ..., "start": ..., "duration": ...}`). Serializar essa lista
+    manda `start` e `duration` para o modelo: medido em 21/09/2026 numa
+    corrida real de 3 videos, **58% dos caracteres eram metadado** -- 88 mil
+    tokens jogados fora em tres videos. Numa semana cheia isso sozinho
+    queima a cota que o anel de chaves existe para poupar.
+    """
     d = json.loads(p.read_text(encoding="utf-8", errors="replace"))
     t = d.get("transcript") or d.get("text") or ""
-    return t if isinstance(t, str) else json.dumps(t, ensure_ascii=False)
+    if isinstance(t, str):
+        return t
+    if isinstance(t, list):
+        partes = []
+        for s in t:
+            if isinstance(s, dict):
+                partes.append(str(s.get("text") or ""))
+            elif isinstance(s, str):
+                partes.append(s)
+        # \n e nao espaco: da' ao `lotes()` pontos naturais de corte, em vez
+        # de uma linha unica de centenas de milhares de caracteres.
+        junto = "\n".join(x.strip() for x in partes if x.strip())
+        if junto:
+            return junto
+    # formato desconhecido: melhor mandar tudo do que mandar nada, mas o
+    # aviso tem de aparecer, senao a degradacao passa silenciosa.
+    print("   ⚠️ transcript em formato inesperado (%s) em %s: caindo no JSON cru"
+          % (type(t).__name__, p.name), flush=True)
+    return json.dumps(t, ensure_ascii=False)
 
 
 def main() -> int:
