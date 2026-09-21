@@ -42,7 +42,14 @@ jobs:
       - name: Trazer dicionario e manifestos (fora do repo, por desenho)
         env:
           DICIONARIO_B64: ${{ secrets.DICIONARIO_CANAIS_B64 }}
-          MANIFESTOS_B64: ${{ secrets.MANIFESTOS_B64 }}
+          # ⛔ Um secret do GitHub para em 48 KB e os manifestos dao 118 KB em
+          #    base64 -- IDs de video sao aleatorios e nao comprimem. Por isso
+          #    vao em TRES partes, concatenadas aqui na ordem 1,2,3.
+          #    Quem regravar uma parte TEM de regravar as tres: metade de um
+          #    tar.gz nao e' um tar.gz, e o `base64 -d` falha inteiro.
+          MANIFESTOS_B64_1: ${{ secrets.MANIFESTOS_B64_1 }}
+          MANIFESTOS_B64_2: ${{ secrets.MANIFESTOS_B64_2 }}
+          MANIFESTOS_B64_3: ${{ secrets.MANIFESTOS_B64_3 }}
         run: |
           set -euo pipefail
           if [ -z "${DICIONARIO_B64:-}" ]; then
@@ -52,11 +59,17 @@ jobs:
           fi
           echo "$DICIONARIO_B64" | base64 -d > dicionario_canais.json
           mkdir -p manifestos
-          if [ -n "${MANIFESTOS_B64:-}" ]; then
-            echo "$MANIFESTOS_B64" | base64 -d | tar xz -C .
+          # printf sem %s extra e de proposito: um unico \n no meio do base64
+          # quebraria a decodificacao. Nada de `echo` aqui.
+          printf '%s%s%s' "${MANIFESTOS_B64_1:-}" "${MANIFESTOS_B64_2:-}" \
+                          "${MANIFESTOS_B64_3:-}" > manifestos.b64
+          if [ -s manifestos.b64 ]; then
+            base64 -d manifestos.b64 | tar xz -C .
+            echo "manifestos restaurados: $(ls manifestos | wc -l) canais"
           else
             echo "⚠️ sem manifesto anterior: TODO video sera' tratado como novo."
           fi
+          rm -f manifestos.b64
 
       - name: Estagio 1 - radar
         run: |
