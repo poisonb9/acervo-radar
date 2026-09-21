@@ -166,8 +166,14 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--entrada", default="legendas")
     ap.add_argument("--saida", default="fichas")
+    # ⭐ gemini-flash-lite-latest fecha a cadeia de proposito: medido em
+    #    21/09/2026, foi o UNICO Gemini que respondeu 200 nas 7 chaves boas
+    #    enquanto 3.6 e 3.5 devolviam 429 em todas elas. Como a cota e' POR
+    #    MODELO, uma cadeia sem ele pode terminar sem nenhuma rota Gemini
+    #    viva -- foi o que aconteceu no dia em que isto foi escrito.
     ap.add_argument("--modelos", default="nemotron,gemini-3.6-flash,"
-                                         "gemini-3.5-flash,gemini-3.7-flash")
+                                         "gemini-3.5-flash,gemini-3.7-flash,"
+                                         "gemini-flash-lite-latest")
     ap.add_argument("--limite", type=int, default=0, help="⭐ use 1 antes do lote")
     a = ap.parse_args()
 
