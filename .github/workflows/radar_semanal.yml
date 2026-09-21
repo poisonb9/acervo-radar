@@ -105,6 +105,22 @@ jobs:
             skills/
           retention-days: 30
 
+      - name: Estagio 5 - guardar no Drive (resgate manual)
+        # ⛔ roda MESMO se algo antes falhar: se o commit nao sair, o Drive
+        #    e' o unico caminho para o dono alcancar o conhecimento novo.
+        if: ${{ always() && github.event.inputs.seco != 'true' }}
+        env:
+          TOKEN_DRIVE_JSON: ${{ secrets.TOKEN_DRIVE_CRYPTOZPIN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN_DRIVE_JSON:-}" ]; then
+            echo "⚠️ sem token do Drive -- pulando. O artefato do Actions"
+            echo "   ainda serve como resgate, por 30 dias."
+            exit 0
+          fi
+          pip install --quiet google-api-python-client google-auth
+          python scripts/guardar_no_drive.py --pasta "Acervo Radar"             --entrada fichas skills novos.json
+
       - name: Commit unico, no fim
         if: ${{ github.event.inputs.seco != 'true' }}
         run: |
