@@ -36,6 +36,20 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
+# ⛔⛔ 23/09/2026 -- a saida PRECISA aguentar nao-ASCII, e isto nao e'
+#    cosmetico. A guarda que recusa `flash-lite` imprime ⛔ antes de
+#    devolver 2. No Windows o stdout nasce em cp1252, esse print levantava
+#    UnicodeEncodeError, e a guarda saia com codigo 1 e SEM dizer por que.
+#    Recusa que nao consegue explicar a recusa e' meia guarda: quem le o
+#    codigo 1 pensa em 'lote vazio' (ver FALSO VERDE no topo) e tenta de novo.
+# ⭐ errors='replace' e nao 'strict': perder um simbolo no log e' aceitavel,
+#    perder a mensagem inteira nao e'.
+for _f in (sys.stdout, sys.stderr):
+    try:
+        _f.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        pass
+
 CHARS_POR_LOTE = 9000
 
 URL_GEMINI = ("https://generativelanguage.googleapis.com/v1beta/models/"
