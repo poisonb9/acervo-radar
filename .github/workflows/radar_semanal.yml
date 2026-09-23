@@ -112,10 +112,19 @@ jobs:
         run: |
           # ⭐ a cota do Gemini e' POR MODELO. Cair de modelo em modelo e' o
           #    que mantem isto vivo quando uma cota acaba.
-          # ⭐ flash-lite fecha a cadeia: em 21/09/2026 foi o unico Gemini
-          #    que respondeu 200 nas 7 chaves, com 3.6 e 3.5 em 429.
+          # ⛔⛔ 23/09/2026 -- `gemini-flash-lite-latest` SAIU DA CADEIA.
+          #    A linha antiga o mantinha no fim "para nunca faltar rota
+          #    viva". Ordem do dono, textual: "nunca jamais usar o flash
+          #    light para destilar nada, livro nem legenda -- e' lixo".
+          #    71 de 132 arquivos do acervo sairam dele e estao sendo
+          #    RETIRADOS.
+          # ⛔ Rota viva nao justifica rota ruim. Sem cota Gemini, a cadeia
+          #    cai no nemotron; se nem ele responder, a corrida PARA. Ficha
+          #    ausente se ve -- ficha ruim entra no acervo e e' citada.
+          # ⭐ O `destilar.py` tambem RECUSA flash-lite em tempo de execucao
+          #    (falha fechada), entao editar esta linha de volta nao basta.
           python scripts/destilar.py --entrada legendas --saida fichas \
-            --modelos "nemotron,gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-flash-lite-latest"
+            --modelos "nemotron,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash"
 
       - name: Estagio 4 - regenerar skills
         if: ${{ github.event.inputs.seco != 'true' }}

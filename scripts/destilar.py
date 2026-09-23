@@ -215,14 +215,26 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--entrada", default="legendas")
     ap.add_argument("--saida", default="fichas")
-    # ⭐ gemini-flash-lite-latest fecha a cadeia de proposito: medido em
-    #    21/09/2026, foi o UNICO Gemini que respondeu 200 nas 7 chaves boas
-    #    enquanto 3.6 e 3.5 devolviam 429 em todas elas. Como a cota e' POR
-    #    MODELO, uma cadeia sem ele pode terminar sem nenhuma rota Gemini
-    #    viva -- foi o que aconteceu no dia em que isto foi escrito.
-    ap.add_argument("--modelos", default="nemotron,gemini-3.6-flash,"
-                                         "gemini-3.5-flash,gemini-3.7-flash,"
-                                         "gemini-flash-lite-latest")
+    # ⛔⛔ 23/09/2026 -- `gemini-flash-lite-latest` SAIU DA CADEIA, e a razao
+    #    REVOGA a que estava escrita aqui antes.
+    #
+    #    A justificativa antiga era de DISPONIBILIDADE: em 21/09 o flash-lite
+    #    foi o unico Gemini a responder 200 nas 7 chaves, entao ele fechava a
+    #    cadeia para que nunca faltasse rota viva. Estava certo sobre cota e
+    #    errado sobre o que importa.
+    #
+    #    O dono determinou em 23/09, textualmente: "nunca jamais usar o flash
+    #    light para destilar nada, livro nem legenda -- e' lixo, nao presta".
+    #    Toda ficha que saiu dele esta' sendo RETIRADA do acervo (71 de 132
+    #    arquivos em `destilacao_acervo`, 54%).
+    #
+    # ⛔ Rota viva NAO justifica rota ruim. Se a cota dos Gemini bons acabar,
+    #    o certo e' a cadeia cair para o nemotron ou a corrida PARAR -- nunca
+    #    produzir ficha que sera' jogada fora depois. Ficha ruim custa mais
+    #    que ficha ausente: a ausente se ve, a ruim entra no acervo e e'
+    #    citada.
+    ap.add_argument("--modelos", default="nemotron,gemini-3.7-flash,"
+                                         "gemini-3.6-flash,gemini-3.5-flash")
     ap.add_argument("--limite", type=int, default=0, help="⭐ use 1 antes do lote")
     # ⭐⭐ 23/09/2026 -- PARALELISMO, a pedido do dono. Ate hoje este
     #    estagio era SERIAL: um `for` sobre arquivos, e dentro dele um
@@ -240,7 +252,26 @@ def main() -> int:
                     help="legendas em paralelo (0 ou 1 = serial)")
     a = ap.parse_args()
 
-    cadeia = rotas([m.strip() for m in a.modelos.split(",") if m.strip()])
+    # ⛔⛔ GUARDA DE VALOR, e ela existe porque tirar do PADRAO nao basta:
+    #    o workflow passa a cadeia EXPLICITA na linha do Estagio 3, e
+    #    qualquer um pode passar `--modelos` a' mao. Uma proibicao que so'
+    #    vive no valor default e' uma proibicao que a proxima pressa revoga.
+    # ⭐ Falha FECHADA: recusa a corrida inteira em vez de remover o modelo
+    #    em silencio. Remover calado deixaria a cadeia mais curta do que
+    #    quem chamou pensa que ela e' -- e cadeia curta demais termina sem
+    #    rota viva, que e' justamente o medo que pos o flash-lite aqui.
+    pedidos = [m.strip() for m in a.modelos.split(",") if m.strip()]
+    proibidos = [m for m in pedidos if "flash-lite" in m.lower()]
+    if proibidos:
+        print("⛔ MODELO PROIBIDO na cadeia: %s" % ", ".join(proibidos))
+        print("   `flash-lite` nao destila nada -- livro nem legenda.")
+        print("   Ordem do dono, 23/09/2026. As fichas que ele produziu")
+        print("   estao sendo RETIRADAS do acervo; nao gere mais.")
+        print("   Se a cota dos Gemini bons acabou, PARE e pergunte --")
+        print("   ficha ausente se ve, ficha ruim entra no acervo e e' citada.")
+        return 2
+
+    cadeia = rotas(pedidos)
     if not cadeia:
         print("⛔ nenhuma chave de modelo no ambiente.")
         return 2
