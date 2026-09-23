@@ -17,6 +17,11 @@ client_secrets*.json
 # ⛔ A PECA MAIS SENSIVEL. E' o unico arquivo que liga C001..C015 ao canal
 #    real. Sem ele, o que esta' versionado e' uma lista de codigos.
 dicionario_canais.json
+# ⛔ 23/09/2026 -- e QUALQUER forma codificada dele. Gravar o secret exige
+#    passar o dicionario em base64, e o arquivo intermediario nasce AQUI
+#    dentro. Com o repo PUBLICO desde 23/09, um `git add .` distraido o
+#    publicaria -- e base64 nao e' segredo, e' so' outra grafia.
+*.b64
 
 # --- MANIFESTOS DE ID ---------------------------------------------------
 # ⛔ UM UNICO ID DE VIDEO REVELA O CANAL: basta colar no navegador.

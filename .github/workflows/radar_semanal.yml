@@ -130,6 +130,15 @@ jobs:
             --canais canais --grupo css_frontend --nome css-frontend || true
           python scripts/gerar_skills.py --fichas fichas --saida skills \
             --canais canais --grupo mentores_fx --nome mentores-fx || true
+          # ⭐ 23/09/2026 -- TERCEIRO grupo, a pedido do dono. C026 entra
+          #    como maestro de IA, nao como front-end nem daytrade.
+          # ⛔ NOME SEPARADO DE PROPOSITO. A skill `maestros-da-ia` que ja'
+          #    existe tem 147.597 fichas e vem do pipeline LOCAL. Gerar
+          #    aqui com o mesmo nome trocaria o acervo inteiro por um
+          #    punhado de videos novos. A fusao e' passo SEPARADO e
+          #    deliberado, nunca efeito colateral da corrida.
+          python scripts/gerar_skills.py --fichas fichas --saida skills \
+            --canais canais --grupo maestros_ia --nome maestros-ia-radar || true
           ls -la skills || true
 
       - name: Guardar saida como artefato (resgate manual se o commit falhar)

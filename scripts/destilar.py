@@ -28,11 +28,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import threading
 import os
 import pathlib
 import sys
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 CHARS_POR_LOTE = 9000
 
@@ -222,6 +224,20 @@ def main() -> int:
                                          "gemini-3.5-flash,gemini-3.7-flash,"
                                          "gemini-flash-lite-latest")
     ap.add_argument("--limite", type=int, default=0, help="⭐ use 1 antes do lote")
+    # ⭐⭐ 23/09/2026 -- PARALELISMO, a pedido do dono. Ate hoje este
+    #    estagio era SERIAL: um `for` sobre arquivos, e dentro dele um
+    #    `for` sobre lotes. Com 1.140 legendas isso e a parte mais lenta
+    #    da corrida inteira.
+    # ⚠️ O PARALELISMO NAO E UNIFORME, e a medicao esta no destilador
+    #    local (10/09/2026): gemini 2,4 s/lote serial e 0,7 com 8 fluxos
+    #    (ganha), mas NEMOTRON PIORA -- 4 fluxos deram 35 s/lote e 14
+    #    deram 115, contra 32 serial. Subir fluxo com a cadeia comecando
+    #    em nemotron pode deixar a corrida MAIS LENTA, nao mais rapida.
+    #    Por isso o padrao e 8 e nao 14, e por isso o numero e ajustavel
+    #    sem mexer no codigo.
+    ap.add_argument("--fluxos", type=int,
+                    default=int(os.environ.get("RADAR_FLUXOS", "8")),
+                    help="legendas em paralelo (0 ou 1 = serial)")
     a = ap.parse_args()
 
     cadeia = rotas([m.strip() for m in a.modelos.split(",") if m.strip()])
@@ -241,35 +257,75 @@ def main() -> int:
 
     total_fichas = falhos = 0
     usados: dict[str, int] = {}
-    for n, p in enumerate(arquivos, 1):
+    # ⛔ ESTADO COMPARTILHADO. `usados`, `total_fichas` e `falhos` sao
+    #    escritos por todos os fluxos. Sem trava, duas threads leem o
+    #    mesmo valor e uma sobrescreve a contagem da outra -- e contagem
+    #    errada aqui vira numero declarado la na frente.
+    trava = threading.Lock()
+    feitos = {"n": 0}
+
+    def processar(par: "tuple[int, pathlib.Path]") -> None:
+        nonlocal total_fichas, falhos
+        n, p = par
         cod = p.parent.name
         destino = sai / cod / (p.stem + ".json")
         if destino.is_file():
-            continue
+            return
         destino.parent.mkdir(parents=True, exist_ok=True)
         texto = texto_da_legenda(p)
         if len(texto) < 200:
-            continue
+            return
         fichas = []
         for lote in lotes(texto):
             try:
                 fs, modelo = chamar(cadeia, lote)
                 fichas.extend(fs)
-                usados[modelo] = usados.get(modelo, 0) + 1
+                with trava:
+                    usados[modelo] = usados.get(modelo, 0) + 1
             except Exception as e:  # noqa: BLE001
-                falhos += 1
-                if falhos <= 3:
+                with trava:
+                    falhos += 1
+                    ruim = falhos
+                if ruim <= 3:
                     print("   lote falhou: %s" % str(e)[:90], flush=True)
+        with trava:
+            instantaneo = dict(usados)
         destino.write_text(json.dumps(
             {"codigo": cod, "video": p.stem, "fichas": fichas,
-             "modelos_usados": usados,
+             "modelos_usados": instantaneo,
              "AVISO": ("ficha nao e' citacao. A transcricao nao carrega o "
                        "que estava na TELA.")},
             ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        total_fichas += len(fichas)
-        if n % 20 == 0 or n == len(arquivos):
+        with trava:
+            total_fichas += len(fichas)
+            feitos["n"] += 1
+            quantos, fich, ruins = feitos["n"], total_fichas, falhos
+        if quantos % 20 == 0 or quantos == len(arquivos):
             print("   %d/%d | fichas %d | falhos %d"
-                  % (n, len(arquivos), total_fichas, falhos), flush=True)
+                  % (quantos, len(arquivos), fich, ruins), flush=True)
+
+    # ⭐ PARALELO NO NIVEL DA LEGENDA, nao do lote. Cada fluxo cuida de um
+    #    arquivo inteiro e escreve a PROPRIA saida, entao nao ha duas
+    #    threads gravando o mesmo destino. Os lotes de uma legenda seguem
+    #    em ordem dentro do fluxo.
+    # ⛔ TETO PELO NUMERO DE CHAVES. MEDIDO em 23/09/2026: 4 fluxos sobre
+    #    UMA chave Gemini deram 15 lotes falhos de 32, TODOS HTTP 429.
+    #    Fluxo alem da quantidade de chaves nao acelera -- ele converte
+    #    trabalho em 429, e 429 aqui vira ficha que nunca existiu.
+    #    O teto e' o total de chaves DISTINTAS somadas na cadeia.
+    distintas = len({k for _, _, _, ks in cadeia for k in ks})
+    fluxos = max(1, min(a.fluxos, distintas))
+    if fluxos < a.fluxos:
+        print("⚠️  fluxos reduzidos de %d para %d: ha' %d chave(s)"
+              " distinta(s) na cadeia, e fluxo alem disso vira 429."
+              % (a.fluxos, fluxos, distintas), flush=True)
+    print("fluxos em paralelo:", fluxos, flush=True)
+    if fluxos == 1:
+        for par in enumerate(arquivos, 1):
+            processar(par)
+    else:
+        with ThreadPoolExecutor(max_workers=fluxos) as pool:
+            list(pool.map(processar, enumerate(arquivos, 1)))
 
     print()
     print("fichas: %d | lotes falhos: %d | modelos: %s"
