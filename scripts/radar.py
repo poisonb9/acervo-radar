@@ -35,13 +35,15 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
+from porta_youtube import rodar  # toda chamada ao YouTube passa pela sentinela
+
 
 def enumerar(handle: str, timeout: int = 900) -> list[str]:
-    r = subprocess.run(
+    r = rodar(
         ["yt-dlp", "--flat-playlist", "--ignore-errors", "--print", "%(id)s",
          "https://www.youtube.com/@%s/videos" % handle.lstrip("@")],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=timeout)
+        rotulo=f"listar {handle}", timeout=timeout)
     return [l.strip() for l in (r.stdout or "").splitlines()
             if len(l.strip()) == 11]
 
