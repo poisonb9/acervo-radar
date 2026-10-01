@@ -1,0 +1,89 @@
+name: Embutir o acervo (vetores)
+
+# ⛔⛔ O QUE ESTE WORKFLOW RESOLVE, E O QUE ELE NAO RESOLVE.
+#
+#   RESOLVE ...... corrida longa sem disputar a maquina do dono. A maquina
+#                  local tem 1,4 GB de RAM livre e e' usada para trabalhar;
+#                  uma corrida de horas la' briga com o editor, com a suite
+#                  carimbada e com a destilacao. Aqui roda sozinha.
+#   RESOLVE ...... a RAM do passo pesado: o runner tem ~16 GB contra 1,4 GB.
+#                  E' o unico lugar onde o indice INTEIRO (1,38 GB em float32)
+#                  cabe com folga para ser processado de uma vez.
+#   ⛔ NAO RESOLVE cota. As chaves sao AS MESMAS. O Gemini vai dar 429 aqui
+#                  exatamente como da' na maquina local. Quem acha que a nuvem
+#                  compra cota vai gastar minuto de runner para descobrir que
+#                  nao.
+#   ⛔ NAO E' um banco vetorial. O runner e' efemero e nao aceita conexao de
+#                  entrada. Busca continua sendo local.
+#
+# ⛔ COMMIT SO' NO FIM, como no radar: empurrar no meio ja' custou 95 videos
+#    e 2h26. Os estagios passam resultado por ARTEFATO.
+
+on:
+  workflow_dispatch:
+    inputs:
+      fonte:
+        description: "familia a embutir (ex.: mentores_nao_fazer). Vazio = a proxima da ordem."
+        required: false
+        default: ""
+      provedor:
+        description: "voyage | jina | nvidia | google"
+        required: false
+        default: "voyage"
+      seco:
+        description: "true = so' conta o que FARIA, nao gasta cota"
+        required: false
+        default: "true"
+
+concurrency:
+  # ⛔ duas corridas na mesma familia escreveriam o mesmo `.f16` e uma
+  #    truncaria a outra -- vetor pela metade nao levanta excecao.
+  group: embutir-acervo
+  cancel-in-progress: false
+
+jobs:
+  embutir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar numpy
+        run: pip install --quiet numpy
+
+      - name: Declarar o que esta em jogo
+        run: |
+          echo "provedor: ${{ github.event.inputs.provedor }}"
+          echo "fonte:    ${{ github.event.inputs.fonte }}"
+          echo "seco:     ${{ github.event.inputs.seco }}"
+          free -g | head -2
+          df -h / | tail -1
+
+      # ⛔ AS CHAVES ENTRAM POR SECRET, uma por linha, como o radar ja' faz.
+      #    Nunca por arquivo no repo.
+      - name: Embutir
+        env:
+          VOYAGE_CHAVES: ${{ secrets.VOYAGE_CHAVES }}
+          JINA_CHAVES: ${{ secrets.JINA_CHAVES }}
+          NVIDIA_CHAVES: ${{ secrets.NVIDIA_CHAVES }}
+          GEMINI_CHAVES: ${{ secrets.GEMINI_CHAVES }}
+        run: |
+          python scripts/embutir_no_runner.py \
+            --provedor "${{ github.event.inputs.provedor }}" \
+            --fonte "${{ github.event.inputs.fonte }}" \
+            ${{ github.event.inputs.seco == 'true' && '--seco' || '' }}
+
+      # ⭐ ARTEFATO, nao commit: os vetores sao centenas de MB e o git
+      #    engasga com binario grande. O dono baixa e funde na maquina.
+      - name: Guardar os vetores
+        if: ${{ github.event.inputs.seco != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vetores-${{ github.event.inputs.provedor }}-${{ github.run_id }}
+          path: saida/
+          retention-days: 14
+          if-no-files-found: error

@@ -1,0 +1,9 @@
+# ⛔⛔ O RUNNER E' LINUX, E `core.autocrlf=true` NESTA MAQUINA.
+#    Sem esta linha o git grava `instalar_a_guarda.sh` com CRLF, e no
+#    `ubuntu-latest` isso vira `bad interpreter: /bin/bash^M` -- o script
+#    quebra exatamente onde ele precisa rodar.
+# ⚠️ ESCOPO DELIBERADAMENTE MINIMO: so' `*.sh`. Um `* text=auto eol=lf`
+#    renormalizaria o repo inteiro e produziria um diff enorme que esconde
+#    a mudanca real. Hoje ha' 0 arquivos `.sh` rastreados, entao esta regra
+#    nao reescreve nada que ja' esteja no git.
+*.sh text eol=lf
